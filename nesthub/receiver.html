@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>McAfee Cookbook — Nest Hub</title>
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #f4f4f5; }
+    #cookbook { position: fixed; inset: 0; width: 100%; height: 100%; border: none; display: block; }
+    cast-media-player, touch-controls { display: none !important; }
+  </style>
+</head>
+<body>
+  <iframe id="cookbook" title="McAfee Cookbook" allow="autoplay; fullscreen"
+          src="https://musicmountainmcafee-eng.github.io/Mcafee-Cookbook/#home"></iframe>
+  <script>
+  (() => {
+    'use strict';
+
+    // This page is hosted on GitHub Pages, not on the Mac. Its URL is the
+    // Receiver Application URL registered in the Google Cast Developer Console.
+    const HOME = 'https://musicmountainmcafee-eng.github.io/Mcafee-Cookbook/#home';
+    const CHANNEL = 'urn:x-cast:com.fullyautomatedthings.nesthub';
+    const RETRY_MEDIA_MS = 9 * 60 * 1000;
+    const frame = document.getElementById('cookbook');
+    let currentPage = HOME;
+    let currentAudio = null;
+
+    function displayPage(url) {
+      const target = typeof url === 'string' && url.trim() ? url : HOME;
+      // Only show the cookbook. A compromised sender cannot redirect the Hub
+      // to an unrelated external page through this receiver's message channel.
+      try {
+        const parsed = new URL(target, HOME);
+        if (parsed.origin !== new URL(HOME).origin ||
+            !parsed.pathname.startsWith('/Mcafee-Cookbook/')) return;
+        currentPage = parsed.href;
+        if (frame.src !== currentPage) frame.src = currentPage;
+      } catch (error) {
+        console.warn('Invalid cookbook URL', error);
+      }
+    }
+
+    // On Google Nest Hubs, the Cast media player inserts a touch overlay.
+    // Hide it so taps reach the actual cookbook inside the iframe.
+    function hideTouchOverlay() {
+      document.querySelectorAll('touch-controls').forEach(el => {
+        el.style.setProperty('display', 'none', 'important');
+      });
+    }
+    new MutationObserver(hideTouchOverlay).observe(document.documentElement,
+      {subtree: true, childList: true});
+    hideTouchOverlay();
+
+    const mediaElement = document.createElement('cast-media-player');
+    mediaElement.style.display = 'none';
+    document.body.appendChild(mediaElement);
+
+    if (typeof cast === 'undefined' || !cast.framework) {
+      // In an ordinary browser the iframe still displays the cookbook.
+      return;
+    }
+
+    const context = cast.framework.CastReceiverContext.getInstance();
+    function maintainTouchMedia() {
+      const request = new cast.framework.messages.LoadRequestData();
+      const media = new cast.framework.messages.MediaInformation();
+      // The cookbook's existing public icon avoids any Mac-hosted PNG file.
+      media.contentId = new URL('../icon-192.png', location.href).href;
+      media.contentType = 'image/png';
+      media.streamType = 'NONE';
+      media.metadata = new cast.framework.messages.GenericMediaMetadata();
+      media.metadata.title = 'McAfee Cookbook';
+      request.media = media;
+      request.autoplay = true;
+      request.requestId = 0;
+      context.getPlayerManager().load(request).catch(err => {
+        console.warn('Unable to renew touch media session', err);
+      });
+    }
+
+    function playSound(url, callback) {
+      if (currentAudio) currentAudio.pause();
+      const sound = currentAudio = new Audio(url);
+      sound.addEventListener('playing', () => callback('started'), {once: true});
+      sound.addEventListener('ended', () => callback('ended'), {once: true});
+      sound.addEventListener('error', () => callback('error', 'Audio could not load'), {once: true});
+      sound.play().catch(err => callback('error', String(err)));
+    }
+
+    context.addCustomMessageListener(CHANNEL, message => {
+      const data = message.data || {};
+      const reply = payload => context.sendCustomMessage(CHANNEL, message.senderId, payload);
+      if (data.type === 'show') {
+        displayPage(data.url);
+        reply({type: 'shown', url: currentPage});
+      } else if (data.type === 'ping') {
+        reply({type: 'pong', url: currentPage});
+      } else if (data.type === 'speak' && typeof data.url === 'string') {
+        playSound(data.url, (event, error) => reply({type: 'speak-event', id: data.id, event, error}));
+      }
+    });
+
+    // Preserve the upstream receiver's same-origin postMessage support for
+    // sounds initiated by the cookbook itself, if added in the future.
+    window.addEventListener('message', event => {
+      if (event.source !== frame.contentWindow || event.origin !== location.origin ||
+          !event.data || event.data.type !== 'speak' || typeof event.data.url !== 'string') return;
+      try {
+        const audioURL = new URL(event.data.url, currentPage).href;
+        playSound(audioURL, (status, error) => {
+          event.source.postMessage({type: 'speak-event', event: status, error}, event.origin);
+        });
+      } catch (err) { console.warn('Invalid sound URL', err); }
+    });
+
+    const options = new cast.framework.CastReceiverOptions();
+    options.disableIdleTimeout = true;
+    options.customNamespaces = {[CHANNEL]: cast.framework.system.MessageType.JSON};
+    const touchUI = new cast.framework.ui.UiConfig();
+    touchUI.touchScreenOptimizedApp = true;
+    options.uiConfig = touchUI;
+
+    try {
+      context.start(options);
+      setTimeout(maintainTouchMedia, 1000);
+      setInterval(maintainTouchMedia, RETRY_MEDIA_MS);
+    } catch (err) {
+      console.error('Unable to start Cast receiver', err);
+    }
+  })();
+  </script>
+</body>
+</html>
