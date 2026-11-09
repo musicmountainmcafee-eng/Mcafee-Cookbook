@@ -274,6 +274,9 @@ a.src-line:hover { color:var(--text); text-decoration:underline; }
 .ing.done .ing-t { color:var(--faint); text-decoration:line-through; }
 .ing-t { flex:1; min-width:0; }
 .ing-t b { font-weight:600; }
+.ing-more { flex:none; width:32px; height:32px; margin:-4px 0; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--faint); }
+.ing-more:hover { background:var(--chip); color:var(--text); }
+.ing-more.has { color:var(--blue); }
 .ing-name { text-decoration:underline; text-decoration-color:var(--border); text-underline-offset:3px; text-decoration-thickness:2px; }
 .ing-name:hover { text-decoration-color:var(--text); }
 .ing-has { display:inline-flex; vertical-align:middle; margin-left:4px; color:var(--blue); }
@@ -640,11 +643,11 @@ html[data-theme="dark"] .card { border-color:var(--border); }
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
-<div id="build-tag">11.08 v5</div>
+<div id="build-tag">11.08 v6</div>
 
 <script>
 'use strict';
-const BUILD = '11.08 v5';
+const BUILD = '11.08 v6';
 // The Cookbook's own Google Sheet backend (Apps Script web app). Still needs the PIN.
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyPA3QlnFp-LLYdShsBqth8bgSCdFpGLb9W0B8vd5dp5-JUnN8Ys0VWFEn2nnwZhv7R/exec';
 
@@ -1733,8 +1736,9 @@ function viewRecipe(v, id) {
           const ing = ingById[l.ingredient_id];
           const q = lineQtyText(l, k);
           const has = ing && (ing.notes || ing.substitutions);
-          const name = l.ingredient_id && ing ? `<span class="ing-name" data-ing="${esc(l.ingredient_id)}">${esc(l.item)}</span>${has ? `<span class="ing-has" data-ing="${esc(l.ingredient_id)}" title="You have notes on this ingredient">${icon('info','sm')}</span>` : ''}` : esc(l.item);
-          return `<div class="ing ${checks.i[i] ? 'done' : ''}" data-i="${i}"><span class="tick">${icon('check')}</span><span class="ing-t">${q ? `<b>${esc(q)}</b> ` : ''}${name}${l.prep ? `<span class="muted">, ${esc(l.prep)}</span>` : ''}</span></div>`;
+          const name = esc(l.item);
+          const more = l.ingredient_id && ing ? `<button class="ing-more ${has ? 'has' : ''}" data-ing="${esc(l.ingredient_id)}" aria-label="About ${esc(l.item)}" title="${has ? 'Your notes on this ingredient' : 'Ingredient details'}">${icon(has ? 'info' : 'chev','sm')}</button>` : '';
+          return `<div class="ing ${checks.i[i] ? 'done' : ''}" data-i="${i}"><span class="tick">${icon('check')}</span><span class="ing-t">${q ? `<b>${esc(q)}</b> ` : ''}${name}${l.prep ? `<span class="muted">, ${esc(l.prep)}</span>` : ''}</span>${more}</div>`;
         }).join('') || '<p class="muted" style="padding:8px 0 12px">No ingredients yet.</p>'}</div>
       </section>
       <section class="card panel">
