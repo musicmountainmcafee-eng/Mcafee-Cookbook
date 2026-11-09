@@ -10,6 +10,8 @@
  *   Cook Log     notes, adjustments and edit history per recipe
  *   Shopping     the shopping list
  *   Categories   recipe categories, in groups (Meal, Cuisine, Diet…)
+ *   Staples      things you buy regularly, and how often (made the first time you add one)
+ *   …any other tab the app adds later is created the same way, so new lists never need a backend update.
  *
  * Settings live in Script Properties (use the "Recipe Box" menu in the Sheet):
  *   APP_PIN            4-digit PIN the app asks for. If it isn't set, the first PIN typed
@@ -18,9 +20,9 @@
  *   CLAUDE_MODEL       optional — defaults to claude-sonnet-5-5
  */
 
-const BACKEND_VERSION = '11.08 v3';
+const BACKEND_VERSION = '11.08 v4';
 // What this backend can do; the app checks this list before using newer features.
-const FEATURES = ['categories', 'auto-columns'];
+const FEATURES = ['categories', 'auto-columns', 'lists'];
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 const SHEETS = {
@@ -33,8 +35,8 @@ const SHEETS = {
   Shopping: ['id', 'name', 'qty', 'category', 'ingredient_id', 'recipes', 'checked', 'added', 'sort'],
   Categories: ['id', 'name', 'group', 'sort', 'created']
 };
-// Tabs the app may write rows to directly (put_rows / delete_rows).
-const OPEN_SHEETS = { Categories: 1 };
+// The core tabs keep their own save actions; every other tab can be written by put_rows / delete_rows.
+const CORE_SHEETS = { Recipes: 1, Ingredients: 1, 'Cook Log': 1, Shopping: 1 };
 
 // Columns that hold JSON (kept at the far right of the sheet so the readable columns come first).
 const JSON_COLS = { ingredients_data: 1, steps_data: 1, original: 1, recipes: 1, changes: 1 };
@@ -178,7 +180,7 @@ function doPost(e) {
 }
 
 function openSheet(name) {
-  if (!OPEN_SHEETS[name]) throw new Error('Can\'t write to ' + name);
+  if (CORE_SHEETS[name] || !/^[A-Z][A-Za-z ]{1,30}$/.test(String(name || ''))) throw new Error('Can\'t write to ' + name);
 }
 
 function out(obj) {
@@ -198,7 +200,13 @@ function withLock(fn) {
 function sheet(name) {
   const ss = book();
   let sh = ss.getSheetByName(name);
-  if (!sh) { setup(); sh = ss.getSheetByName(name); }
+  if (!sh && SHEETS[name]) { setup(); sh = ss.getSheetByName(name); }
+  if (!sh) {
+    // A new list from the app: start the tab with an id column; other columns are added as fields arrive.
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1).setValue('id').setFontWeight('bold').setBackground('#111111').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+  }
   return sh;
 }
 
@@ -208,6 +216,7 @@ function headersOf(sh) {
 
 function readAll(name) {
   const sh = sheet(name);
+  if (sh.getLastColumn() < 1) return [];
   const last = sh.getLastRow();
   if (last < 2) return [];
   const headers = headersOf(sh);
@@ -299,8 +308,21 @@ function loadAll() {
     recipes: readAll('Recipes'),
     ingredients: readAll('Ingredients'),
     log: readAll('Cook Log'),
-    shopping: readAll('Shopping')
+    shopping: readAll('Shopping'),
+    lists: extraLists()
   };
+}
+
+/** Every tab that isn't one of the built-in ones (e.g. Staples), keyed by tab name. */
+function extraLists() {
+  const out = {};
+  book().getSheets().forEach(function (sh) {
+    const n = sh.getName();
+    if (SHEETS[n] || !/^[A-Z][A-Za-z ]{1,30}$/.test(n)) return;
+    if (sh.getLastRow() < 1 || String(sh.getRange(1, 1).getValue()) !== 'id') return;
+    out[n] = readAll(n);
+  });
+  return out;
 }
 
 function saveRecipe(data) {

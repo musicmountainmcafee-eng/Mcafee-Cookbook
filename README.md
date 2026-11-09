@@ -55,6 +55,7 @@ Paste the new `Code.gs`, then **Deploy → Manage deployments → ✏️ Edit �
 | Cook Log | "Made it", adjustments, notes, and an automatic record of every edit to a recipe. |
 | Shopping | The shopping list. |
 | Categories | Recipe categories and their groups. Recipes list theirs in the `categories` column. |
+| Staples | Things you buy regularly: how often (`every_days`, 0 = every trip) and when last bought. Appears the first time you add one. |
 
 ## Files
 - `index.html`: the whole app

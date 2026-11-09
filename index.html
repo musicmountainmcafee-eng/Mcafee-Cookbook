@@ -102,6 +102,7 @@ html[data-theme="dark"] .sb-link.active, html[data-theme="dark"] .sb-add { backg
 .tb-btn { width:40px; height:40px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; color:var(--ink-text); background:rgba(255,255,255,.08); flex:none; }
 .tb-btn:hover { background:rgba(255,255,255,.16); }
 .tb-back { display:none; }
+.tb-back.show { display:inline-flex; }
 .tb-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
 .sync { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-muted); padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.06); white-space:nowrap; }
 .sync i { width:8px; height:8px; border-radius:50%; background:#5fbf5f; }
@@ -182,6 +183,23 @@ html[data-theme="dark"] .ph { color:rgba(255,255,255,.35); }
 .fav-badge svg { fill:#f5a623; stroke:#f5a623; }
 .src-badge { position:absolute; left:10px; bottom:10px; background:rgba(17,17,17,.78); color:#fff; font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; display:inline-flex; align-items:center; gap:5px; }
 .src-badge svg { width:13px; height:13px; }
+
+/* ── Staples ── */
+.staples { padding:16px 18px; margin-bottom:16px; }
+.st-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.st-h h3 { font-family:var(--serif); font-weight:400; font-size:20px; }
+.st-h p { font-size:14px; }
+.st-due { margin-top:8px; }
+.st-due label span { display:flex; flex-direction:column; }
+.st-due small { color:var(--muted); font-size:12.5px; }
+.st-go { margin-top:12px; }
+.st-new { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+.st-new input { flex:1; min-width:160px; height:44px; border:1px solid var(--border); background:var(--surface-2); border-radius:12px; padding:0 13px; font-size:16px; }
+.st-new select, .st-list select { height:44px; border:1px solid var(--border); background:var(--surface-2); border-radius:12px; padding:0 10px; font-size:15px; }
+.st-list .lrow { cursor:default; gap:8px; flex-wrap:wrap; }
+.st-list .lrow-main { min-width:140px; }
+.st-qty { width:96px; height:40px; border:1px solid var(--border); background:var(--surface-2); border-radius:10px; padding:0 10px; font-size:15px; }
+.st-list select { height:40px; }
 
 /* ── Categories ── */
 .cat-group { margin-bottom:12px; }
@@ -643,11 +661,11 @@ html[data-theme="dark"] .card { border-color:var(--border); }
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
-<div id="build-tag">11.08 v6</div>
+<div id="build-tag">11.08 v8</div>
 
 <script>
 'use strict';
-const BUILD = '11.08 v6';
+const BUILD = '11.08 v8';
 // The Cookbook's own Google Sheet backend (Apps Script web app). Still needs the PIN.
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyPA3QlnFp-LLYdShsBqth8bgSCdFpGLb9W0B8vd5dp5-JUnN8Ys0VWFEn2nnwZhv7R/exec';
 
@@ -880,12 +898,12 @@ function guessAisle(name) {
 }
 
 /* ═══════════════════════ State + cache ═══════════════════════ */
-const S = { recipes:[], ingredients:[], log:[], shopping:[], categories:[], features:[], ai:false, loaded:false };
+const S = { recipes:[], ingredients:[], log:[], shopping:[], staples:[], categories:[], features:[], ai:false, loaded:false };
 const UI = { search:'', filter:'all', sort:'new', ingSearch:'', ingCat:'', checks:{}, scale:{} };
 let CFG = ls('rb_cfg') || { url:DEFAULT_URL, pin:'', demo:false };
 if (!CFG.url && !CFG.demo) CFG.url = DEFAULT_URL;
 function saveCfg() { ls('rb_cfg', CFG); }
-function saveCache() { ls('rb_cache', { recipes:S.recipes, ingredients:S.ingredients, log:S.log, shopping:S.shopping, categories:S.categories, features:S.features, ai:S.ai, t:Date.now() }); }
+function saveCache() { ls('rb_cache', { recipes:S.recipes, ingredients:S.ingredients, log:S.log, shopping:S.shopping, staples:S.staples, categories:S.categories, features:S.features, ai:S.ai, t:Date.now() }); }
 function loadCache() { const c = ls('rb_cache'); if (c) { applyData(c); return true; } return false; }
 
 function truthy(v) { return v === true || v === 'TRUE' || v === 'true' || v === 1 || v === '1'; }
@@ -909,6 +927,7 @@ function applyData(d) {
   S.shopping = (d.shopping || []).map(s => ({ ...s, id:String(s.id), checked:truthy(s.checked), recipes: Array.isArray(s.recipes) ? s.recipes : [], sort:+s.sort||0 }));
   S.categories = (d.categories || []).map(c => ({ ...c, id:String(c.id), name:String(c.name||'').trim(), group:String(c.group||'Other').trim() || 'Other', sort:+c.sort||0 })).filter(c => c.name);
   S.features = Array.isArray(d.features) ? d.features : [];
+  S.staples = ((d.lists && d.lists.Staples) || d.staples || []).map(x => ({ ...x, id:String(x.id), name:String(x.name||''), qty:String(x.qty||''), every_days:+x.every_days||0, last_bought:String(x.last_bought||'').slice(0,10), active: x.active === '' || x.active == null ? true : truthy(x.active) })).filter(x => x.name);
   S.ai = !!d.ai;
   S.loaded = true;
 }
@@ -1016,10 +1035,10 @@ const Demo = {
     await new Promise(r => setTimeout(r, 250));
     const d = this.db();
     switch (action) {
-      case 'ping': return { ok:true, ai:false, features:['categories'] };
-      case 'load': return Object.assign({ ok:true, ai:false, features:['categories'] }, JSON.parse(JSON.stringify(d)), { categories: d.categories || [] });
-      case 'put_rows': d.categories = d.categories || []; this.upsert(d.categories, p.items); break;
-      case 'delete_rows': d.categories = (d.categories || []).filter(c => !p.ids.includes(c.id)); break;
+      case 'ping': return { ok:true, ai:false, features:['categories','lists'] };
+      case 'load': return Object.assign({ ok:true, ai:false, features:['categories','lists'] }, JSON.parse(JSON.stringify(d)), { categories: d.categories || [], lists: d.lists || {} });
+      case 'put_rows': if (p.sheet === 'Categories') { d.categories = d.categories || []; this.upsert(d.categories, p.items); } else { d.lists = d.lists || {}; d.lists[p.sheet] = d.lists[p.sheet] || []; this.upsert(d.lists[p.sheet], p.items); } break;
+      case 'delete_rows': if (p.sheet === 'Categories') d.categories = (d.categories || []).filter(c => !p.ids.includes(c.id)); else if (d.lists && d.lists[p.sheet]) d.lists[p.sheet] = d.lists[p.sheet].filter(c => !p.ids.includes(c.id)); break;
       case 'save_recipe': this.upsert(d.ingredients, p.ingredients); this.upsert(d.recipes, [p.recipe]); this.upsert(d.log, p.log); break;
       case 'delete_recipe': d.recipes = d.recipes.filter(r => r.id !== p.id); d.log = d.log.filter(l => l.recipe_id !== p.id); break;
       case 'save_ingredients': this.upsert(d.ingredients, p.items); break;
@@ -1071,7 +1090,15 @@ const Demo = {
     ];
     const categories = STARTER_CATS.map(([id, name, group], i) => ({ id, name, group, sort: i * 10, created: nowIso() }));
     ls(seedKey(), 1);
-    return { recipes:[a, b, c], ingredients: ings, log, shopping: [], categories };
+    const ago = n => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+    const lists = { Staples: [
+      { id: uid('st'), name:'milk', qty:'1 gal', category:'Dairy & Eggs', ingredient_id:'', every_days:7, last_bought: ago(8), active:true, created: nowIso() },
+      { id: uid('st'), name:'eggs', qty:'1 dozen', category:'Dairy & Eggs', ingredient_id:(ings.find(i => i.name === 'eggs') || {}).id || '', every_days:7, last_bought: ago(9), active:true, created: nowIso() },
+      { id: uid('st'), name:'bananas', qty:'', category:'Produce', ingredient_id:'', every_days:0, last_bought: ago(3), active:true, created: nowIso() },
+      { id: uid('st'), name:'coffee', qty:'1 bag', category:'Drinks', ingredient_id:'', every_days:14, last_bought: ago(4), active:true, created: nowIso() },
+      { id: uid('st'), name:'paper towels', qty:'', category:'Other', ingredient_id:'', every_days:30, last_bought: ago(31), active:true, created: nowIso() }
+    ] };
+    return { recipes:[a, b, c], ingredients: ings, log, shopping: [], categories, lists };
   }
 };
 
@@ -1196,7 +1223,6 @@ function isModified(r) {
 
 /* ═══════════════════════ Router + chrome ═══════════════════════ */
 const ROUTES = { recipes: viewRecipes, recipe: viewRecipe, cat: viewCat, categories: viewCategories, ingredients: viewIngredients, shopping: viewShopping, log: viewLog, settings: viewSettings };
-let navStack = [];
 function route() {
   const h = location.hash.replace(/^#/, '') || 'recipes';
   const [name, arg] = h.split('/');
@@ -1206,7 +1232,9 @@ function render() {
   if (!S.loaded) return;
   const r = route();
   $$('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === r.name || (r.name === 'recipe' && a.dataset.nav === 'recipes') || (r.name === 'cat' && a.dataset.nav === 'recipes' && a.classList.contains('bn'))));
-  $('#tb-back').classList.toggle('show', r.name === 'recipe' || r.name === 'cat');
+  const canBack = NAV.length > 1;
+  $('#tb-back').classList.toggle('show', canBack);
+  if (canBack) { const lab = 'Back to ' + navLabel(NAV[NAV.length - 2].h); $('#tb-back').title = lab; $('#tb-back').setAttribute('aria-label', lab); }
   renderSidebarCats();
   $('#c-recipes').textContent = S.recipes.length || '';
   $('#c-ingredients').textContent = S.ingredients.length || '';
@@ -1217,18 +1245,38 @@ function render() {
   hydrateIcons(view);
 }
 function setTitle(t, sub) { $('#tb-title').textContent = t; $('#tb-sub').textContent = sub || 'McAfee Cookbook'; document.title = t === 'Recipes' ? 'McAfee Cookbook' : t + ' · Cookbook'; }
-let lastRoute = '';
+/* In-app history: Back walks through every page you've visited (last 30), and puts you back where you were scrolled. */
+const curHash = () => (location.hash && location.hash !== '#') ? location.hash : '#recipes';
+let NAV = (() => { try { return JSON.parse(sessionStorage.getItem('rb_nav')) || []; } catch (e) { return []; } })();
+let livePushes = 0; // entries added since this page loaded, so the browser's own history matches ours
+function saveNav() { try { sessionStorage.setItem('rb_nav', JSON.stringify(NAV)); } catch (e) {} }
+if (!NAV.length || NAV[NAV.length - 1].h !== curHash()) { NAV.push({ h: curHash(), y: 0 }); saveNav(); }
+window.addEventListener('scroll', debounce(() => { const top = NAV[NAV.length - 1]; if (top && top.h === curHash() && !sheets.length) { top.y = scrollY; saveNav(); } }, 150), { passive:true });
 window.addEventListener('hashchange', () => {
-  const cur = location.hash;
-  if (route().name !== 'recipe') window.scrollTo(0, 0);
+  const h = curHash(), prev = NAV[NAV.length - 2], top = NAV[NAV.length - 1];
+  let y = 0;
+  if (prev && prev.h === h) { NAV.pop(); y = prev.y; livePushes = Math.max(0, livePushes - 1); }   // went back
+  else if (top && top.h === h) y = top.y;
+  else { NAV.push({ h, y: 0 }); livePushes++; if (NAV.length > 30) NAV.shift(); }
+  saveNav();
   if (route().name !== 'cat') UI.catSearch = '';
-  else if (lastRoute !== cur) window.scrollTo(0, 0);
-  lastRoute = cur;
   closeAllSheets();
   render();
+  window.scrollTo(0, y);
+  requestAnimationFrame(() => window.scrollTo(0, y));
 });
-function goBack() { if (navStack.length > 1) history.back(); else location.hash = '#recipes'; }
-window.addEventListener('hashchange', () => { navStack.push(location.hash); if (navStack.length > 50) navStack.shift(); });
+function navLabel(h) {
+  const [name, arg] = h.replace(/^#/, '').split('/');
+  const id = arg ? decodeURIComponent(arg) : '';
+  if (name === 'recipe') return (byId(S.recipes, id) || {}).title || 'recipe';
+  if (name === 'cat') return (byId(S.categories, id) || {}).name || 'category';
+  return { ingredients:'Ingredients', shopping:'Shopping list', log:'Cook log', settings:'Settings', categories:'Categories' }[name] || 'Recipes';
+}
+function goBack() {
+  if (NAV.length < 2) { location.hash = '#recipes'; return; }
+  if (livePushes > 0) history.back();
+  else location.hash = NAV[NAV.length - 2].h;
+}
 function toggleMenu(on) {
   const sb = $('#sidebar'); const open = on === undefined ? !sb.classList.contains('open') : on;
   sb.classList.toggle('open', open); $('#overlay').classList.toggle('on', open);
@@ -2513,6 +2561,109 @@ function mergeQty(a, b) {
   return parts.join(' + ');
 }
 /** Adds items to the shopping list, combining with what's already there. */
+/* ═══════════════════════ Staples: things you buy regularly ═══════════════════════ */
+const FREQS = [[0, 'Every trip'], [7, 'Every week'], [14, 'Every 2 weeks'], [30, 'Every month'], [60, 'Every 2 months']];
+const COMMON_STAPLES = ['milk','eggs','bread','butter','bananas','coffee','cheese','yogurt','apples','onions','garlic','lettuce','chicken breasts','rice','pasta','olive oil','paper towels','toilet paper','dish soap','trash bags'];
+const hasLists = () => CFG.demo || S.features.includes('lists');
+const PREV_BOUGHT = {};
+function freqLabel(d) { d = +d || 0; const f = FREQS.find(x => x[0] === d); return f ? f[1] : 'Every ' + d + ' days'; }
+function freqSelect(id, val) {
+  val = +val || 0;
+  const known = FREQS.some(f => f[0] === val);
+  return `<select id="${id}" aria-label="How often">${FREQS.map(([d, l]) => `<option value="${d}" ${d === val ? 'selected' : ''}>${l}</option>`).join('')}${known ? '' : `<option value="${val}" selected>Every ${val} days</option>`}<option value="custom">Every … days</option></select>`;
+}
+function bindFreq(sel) {
+  sel.addEventListener('change', () => {
+    if (sel.value !== 'custom') return;
+    const n = parseInt(prompt('Every how many days?', '10'), 10);
+    if (!(n > 0)) { sel.value = '7'; return; }
+    if (!Array.from(sel.options).some(o => o.value === String(n))) sel.insertAdjacentHTML('afterbegin', `<option value="${n}">Every ${n} days</option>`);
+    sel.value = String(n);
+  });
+}
+function relDate(d) { const f = fmtDate(d); return /^(Today|Yesterday|\d+ days ago)$/.test(f) ? f.toLowerCase() : 'on ' + f; }
+function daysSince(d) { if (!d) return Infinity; return Math.round((new Date(today() + 'T12:00:00') - new Date(String(d).slice(0, 10) + 'T12:00:00')) / 864e5); }
+function stapleKey(x) { return x.ingredient_id || ingKey(x.name); }
+function shopItemFor(st) { return S.shopping.find(s => !s.checked && (s.staple_id === st.id || stapleKey(s) === stapleKey(st))); }
+function stapleFor(s) { return S.staples.find(st => st.id === s.staple_id) || S.staples.find(st => stapleKey(st) === stapleKey(s)); }
+function stapleDueIn(st) { if (!st.every_days || !st.last_bought) return 0; return Math.max(0, st.every_days - daysSince(st.last_bought)); }
+function stapleIsDue(st) { return st.active !== false && !shopItemFor(st) && stapleDueIn(st) === 0; }
+function saveStaples(list) { if (list.length) queue('put_rows', { sheet:'Staples', items: list.map(st => ({ id:st.id, name:st.name, qty:st.qty || '', category:st.category || '', ingredient_id:st.ingredient_id || '', every_days:+st.every_days || 0, last_bought:st.last_bought || '', active: st.active !== false, created:st.created || nowIso() })) }); }
+function newStaple(name, every, qty) {
+  const p = parseLine(name);
+  const ing = findIngredient(p.item || name);
+  const nm = ing ? ing.name : (p.item || name).trim().toLowerCase();
+  const ex = S.staples.find(st => stapleKey(st) === (ing ? ing.id : ingKey(nm)));
+  if (ex) { ex.every_days = every; if (qty) ex.qty = qty; ex.active = true; saveStaples([ex]); return ex; }
+  const st = { id: uid('st'), name: nm, qty: qty || lineQtyText(p, 1), category: ing ? ing.category : guessAisle(nm), ingredient_id: ing ? ing.id : '', every_days: every, last_bought: '', active: true, created: nowIso() };
+  S.staples.push(st); saveStaples([st]);
+  return st;
+}
+/** Called when a shopping item is ticked or unticked: ticking a staple counts as buying it. */
+function stapleBought(s, bought) {
+  const st = stapleFor(s); if (!st) return;
+  if (bought) { PREV_BOUGHT[st.id] = st.last_bought; st.last_bought = today(); }
+  else if (st.id in PREV_BOUGHT) { st.last_bought = PREV_BOUGHT[st.id]; delete PREV_BOUGHT[st.id]; }
+  else return;
+  saveStaples([st]);
+}
+function addStaplesToList(list) {
+  addShopItems(list.map(st => ({ name: st.name, qty: st.qty, category: st.category, ingredient_id: st.ingredient_id, staple_id: st.id })));
+}
+function staplesCardHtml() {
+  if (!hasLists()) return '';
+  const active = S.staples.filter(st => st.active !== false);
+  const due = active.filter(stapleIsDue).sort((a, b) => a.name.localeCompare(b.name));
+  if (!active.length) return `<div class="card staples"><div class="st-h"><div><h3>Staples</h3><p class="muted">Things you buy regularly. They show up here when it's time to buy them again.</p></div><button class="btn sm" data-st-manage>${icon('plus','sm')}Add staples</button></div></div>`;
+  const next = active.filter(st => !due.includes(st) && !shopItemFor(st)).sort((a, b) => stapleDueIn(a) - stapleDueIn(b))[0];
+  return `<div class="card staples"><div class="st-h"><div><h3>Staples</h3><p class="muted">${due.length ? due.length + ' due' : 'Nothing due'}${next ? `. Next up: ${esc(next.name)} in ${stapleDueIn(next)} day${stapleDueIn(next) === 1 ? '' : 's'}` : ''}</p></div><button class="btn sm ghost" data-st-manage>Manage</button></div>
+    ${due.length ? `<div class="check-list st-due">${due.map(st => `<label><input type="checkbox" data-st="${esc(st.id)}" checked><span><span><b>${esc(st.name)}</b>${st.qty ? ` <span class="muted">${esc(st.qty)}</span>` : ''}</span><small>${esc(freqLabel(st.every_days))}${st.last_bought ? ' · last bought ' + esc(relDate(st.last_bought)) : ''}</small></span></label>`).join('')}</div>
+      <div class="st-go"><button class="btn pri" data-st-add>${icon('cart','sm')}Add <span data-st-n>${due.length}</span> to list</button></div>` : ''}</div>`;
+}
+function bindStaplesCard(v) {
+  $$('[data-st-manage]', v).forEach(b => b.onclick = manageStaples);
+  const add = $('[data-st-add]', v); if (!add) return;
+  const count = () => { const n = $$('[data-st]:checked', v).length; $('[data-st-n]', v).textContent = n; add.disabled = !n; };
+  $$('[data-st]', v).forEach(c => c.onchange = count);
+  add.onclick = () => {
+    const pick = $$('[data-st]:checked', v).map(c => byId(S.staples, c.dataset.st)).filter(Boolean);
+    if (!pick.length) return;
+    addStaplesToList(pick);
+    toast(pick.length + ' staple' + (pick.length > 1 ? 's' : '') + ' added');
+  };
+}
+function manageStaples() {
+  const w = openSheet({ title:'My staples', lg:true, body:`
+    <p class="muted" style="font-size:14px;margin-bottom:12px">Things you buy regularly. When one is due it shows on your shopping list. Ticking it off in the store counts as bought.</p>
+    <form class="st-new" id="st-form"><input id="st-name" placeholder="e.g. 1 gallon milk" autocomplete="off" list="st-ings" aria-label="Staple">${freqSelect('st-freq', 7)}<button class="btn pri">${icon('plus','sm')}Add</button></form>
+    <datalist id="st-ings">${S.ingredients.map(i => `<option value="${esc(i.name)}">`).join('')}</datalist>
+    <div id="st-common"></div>
+    <div id="st-list"></div>`, foot:`<button class="btn pri" data-close>Done</button>` });
+  bindFreq(w.querySelector('#st-freq'));
+  const draw = () => {
+    const have = new Set(S.staples.filter(st => st.active !== false).map(stapleKey));
+    const common = COMMON_STAPLES.filter(n => !have.has(ingKey(n)) && !have.has((findIngredient(n) || {}).id)).slice(0, 12);
+    w.querySelector('#st-common').innerHTML = common.length ? `<div class="pick-h" style="margin:4px 0 6px">Quick add (every week)</div><div class="pick-chips" style="margin-bottom:16px">${common.map(n => `<button type="button" class="pchip" data-common="${esc(n)}">${icon('plus','sm')}${esc(n)}</button>`).join('')}</div>` : '';
+    const list = S.staples.filter(st => st.active !== false).sort((a, b) => (AISLES.indexOf(a.category) - AISLES.indexOf(b.category)) || a.name.localeCompare(b.name));
+    w.querySelector('#st-list').innerHTML = list.length ? `<div class="card list st-list">${list.map(st => `<div class="lrow" data-row="${esc(st.id)}"><span class="cat-dot" style="background:${AISLE_COLORS[st.category] || '#999'}"></span><div class="lrow-main"><b>${esc(st.name)}</b><small>${shopItemFor(st) ? 'On your list now' : stapleIsDue(st) ? 'Due now' : 'Due in ' + stapleDueIn(st) + ' day' + (stapleDueIn(st) === 1 ? '' : 's')}${st.last_bought ? ' · bought ' + esc(relDate(st.last_bought)) : ''}</small></div>
+      <input class="st-qty" value="${esc(st.qty || '')}" placeholder="amount" aria-label="Usual amount" data-qty="${esc(st.id)}">${freqSelect('f-' + st.id, st.every_days).replace('<select ', `<select data-freq="${esc(st.id)}" `)}<button class="btn sm icon ghost" data-del="${esc(st.id)}" aria-label="Remove ${esc(st.name)}">${icon('trash','sm')}</button></div>`).join('')}</div>`
+      : '<p class="muted" style="padding:10px 0">No staples yet.</p>';
+    w.querySelectorAll('[data-common]').forEach(b => b.onclick = () => { newStaple(b.dataset.common, 7); draw(); render(); });
+    w.querySelectorAll('[data-freq]').forEach(sel => { bindFreq(sel); sel.addEventListener('change', () => { if (sel.value === 'custom') return; const st = byId(S.staples, sel.dataset.freq); st.every_days = +sel.value; saveStaples([st]); render(); }); });
+    w.querySelectorAll('[data-qty]').forEach(inp => inp.onchange = () => { const st = byId(S.staples, inp.dataset.qty); st.qty = inp.value.trim(); saveStaples([st]); });
+    w.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const st = byId(S.staples, b.dataset.del); S.staples = S.staples.filter(x => x !== st); queue('delete_rows', { sheet:'Staples', ids:[st.id] }); draw(); render(); toast('Removed ' + st.name); });
+  };
+  w.querySelector('#st-form').onsubmit = e => {
+    e.preventDefault();
+    const t = w.querySelector('#st-name').value.trim(); if (!t) return;
+    const f = w.querySelector('#st-freq').value;
+    newStaple(t, f === 'custom' ? 7 : +f);
+    w.querySelector('#st-name').value = ''; w.querySelector('#st-name').focus();
+    draw(); render();
+  };
+  draw();
+}
+
 function addShopItems(items, recipe) {
   const ops = [];
   let maxSort = Math.max(0, ...S.shopping.map(s => s.sort || 0));
@@ -2522,8 +2673,9 @@ function addShopItems(items, recipe) {
     if (ex) {
       ex.qty = mergeQty(ex.qty, it.qty);
       if (recipe && !ex.recipes.some(x => x.id === recipe.id)) ex.recipes.push({ id: recipe.id, title: recipe.title });
+      if (it.staple_id) ex.staple_id = it.staple_id;
     } else {
-      ex = { id: uid('s'), name: it.name, qty: it.qty || '', category: it.category || guessAisle(it.name), ingredient_id: it.ingredient_id || '', recipes: recipe ? [{ id: recipe.id, title: recipe.title }] : [], checked:false, added: nowIso(), sort: ++maxSort };
+      ex = { id: uid('s'), name: it.name, qty: it.qty || '', category: it.category || guessAisle(it.name), ingredient_id: it.ingredient_id || '', recipes: recipe ? [{ id: recipe.id, title: recipe.title }] : [], checked:false, added: nowIso(), sort: ++maxSort, staple_id: it.staple_id || '' };
       S.shopping.push(ex);
     }
     ops.push({ op:'put', item: Object.assign({}, ex) });
@@ -2566,14 +2718,16 @@ function viewShopping(v) {
   open.forEach(s => s.recipes.forEach(r => recipes[r.id] = r.title));
   const groups = {};
   open.forEach(s => (groups[s.category || 'Other'] = groups[s.category || 'Other'] || []).push(s));
-  const row = s => `<div class="lrow shop ${s.checked ? 'done' : ''}" data-id="${esc(s.id)}"><span class="tick">${icon('check')}</span><div class="lrow-main"><b>${esc(s.name)}</b>${s.recipes.length ? `<small>For ${esc(s.recipes.map(r => r.title).join(', '))}</small>` : ''}</div><span class="shop-qty">${esc(s.qty)}</span><button class="btn sm icon ghost" data-edit="${esc(s.id)}" aria-label="Edit">${icon('dots','sm')}</button></div>`;
+  const row = s => `<div class="lrow shop ${s.checked ? 'done' : ''}" data-id="${esc(s.id)}"><span class="tick">${icon('check')}</span><div class="lrow-main"><b>${esc(s.name)}</b>${s.recipes.length || stapleFor(s) ? `<small>${[stapleFor(s) ? 'Staple' : '', s.recipes.length ? 'For ' + s.recipes.map(r => r.title).join(', ') : ''].filter(Boolean).map(esc).join(' · ')}</small>` : ''}</div><span class="shop-qty">${esc(s.qty)}</span><button class="btn sm icon ghost" data-edit="${esc(s.id)}" aria-label="Edit">${icon('dots','sm')}</button></div>`;
   v.innerHTML = `
     <form class="addbar" id="shop-add"><div class="sugg" style="flex:1"><input id="shop-in" placeholder="Add an item… e.g. 2 lb chicken thighs" autocomplete="off" aria-label="Add an item"><div class="sugg-list hide" id="shop-sugg"></div></div><button class="btn pri icon" aria-label="Add">${icon('plus')}</button></form>
+    ${staplesCardHtml()}
     ${Object.keys(recipes).length ? `<div class="from-recipes">${Object.entries(recipes).map(([id, t]) => `<span class="chip"><a href="#recipe/${encodeURIComponent(id)}" style="text-decoration:none">${esc(t)}</a><button data-unrecipe="${esc(id)}" aria-label="Remove ${esc(t)}'s items" title="Remove this recipe's items">${icon('x','sm')}</button></span>`).join('')}</div>` : ''}
     ${!S.shopping.length ? `<div class="card empty">${icon('cart')}<h3>Your list is empty</h3><p>Open a recipe and tap “Add to shopping list”, or type items above.</p></div>` : ''}
     ${AISLES.filter(a => groups[a]).map(a => `<div class="section-h" style="margin-top:14px"><h2><span class="cat-dot" style="display:inline-block;margin-right:6px;background:${AISLE_COLORS[a]}"></span>${esc(a)}</h2></div><div class="card list">${groups[a].sort((x, y) => x.name.localeCompare(y.name)).map(row).join('')}</div>`).join('')}
     ${done.length ? `<div class="section-h"><h2>In the cart · ${done.length}</h2><button class="btn sm" id="shop-clear">${icon('trash','sm')}Clear these</button></div><div class="card list">${done.map(row).join('')}</div>` : ''}
     ${S.shopping.length ? `<div style="display:flex;gap:8px;margin-top:20px;flex-wrap:wrap"><button class="btn" id="shop-copy">${icon('copy')}Copy list</button>${navigator.share ? `<button class="btn" id="shop-share">${icon('share')}Share</button>` : ''}<button class="btn ghost danger" id="shop-all">Clear everything</button></div>` : ''}`;
+  bindStaplesCard(v);
   const inp = $('#shop-in'), sugg = $('#shop-sugg');
   inp.oninput = () => {
     const p = parseLine(inp.value); const s = (p.item || inp.value).trim().toLowerCase();
@@ -2594,7 +2748,9 @@ function viewShopping(v) {
   $$('.shop', v).forEach(el => el.onclick = e => {
     if (e.target.closest('[data-edit]')) return editShopItem(e.target.closest('[data-edit]').dataset.edit);
     const s = byId(S.shopping, el.dataset.id); s.checked = !s.checked;
-    queue('shop_ops', { ops:[{ op:'put', item: Object.assign({}, s) }] }); render();
+    queue('shop_ops', { ops:[{ op:'put', item: Object.assign({}, s) }] });
+    if (hasLists()) stapleBought(s, s.checked);
+    render();
   });
   $$('[data-unrecipe]', v).forEach(b => b.onclick = () => {
     const rid = b.dataset.unrecipe; const ops = [];
@@ -2624,11 +2780,18 @@ function editShopItem(id) {
     <label class="field"><span>Item</span><input id="se-name" value="${esc(s.name)}"></label>
     <div class="row2"><label class="field"><span>Amount</span><input id="se-qty" value="${esc(s.qty)}" placeholder="e.g. 2 lb"></label>
     <label class="field"><span>Aisle</span><select id="se-cat">${AISLES.map(a => `<option ${s.category === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></label></div>
+    ${hasLists() ? `<label class="field"><span>Buy regularly?</span><select id="se-st"><option value="no">No, just this time</option>${FREQS.map(([d, l]) => `<option value="${d}" ${stapleFor(s) && stapleFor(s).active !== false && +stapleFor(s).every_days === d ? 'selected' : ''}>${l}</option>`).join('')}${stapleFor(s) && !FREQS.some(f => f[0] === +stapleFor(s).every_days) ? `<option value="${stapleFor(s).every_days}" selected>Every ${stapleFor(s).every_days} days</option>` : ''}</select><small>Staples show up on your list when they're due.</small></label>` : ''}
     ${s.recipes.length ? `<p class="muted" style="font-size:14px">For: ${s.recipes.map(r => `<a href="#recipe/${encodeURIComponent(r.id)}">${esc(r.title)}</a>`).join(', ')}</p>` : ''}`,
     foot:`<button class="btn ghost danger" id="se-del">${icon('trash','sm')}Remove</button><span class="spacer"></span><button class="btn pri" id="se-save">Save</button>` });
   w.querySelector('#se-save').onclick = () => {
     s.name = w.querySelector('#se-name').value.trim() || s.name; s.qty = w.querySelector('#se-qty').value.trim(); s.category = w.querySelector('#se-cat').value;
     if (s.ingredient_id) { const ing = byId(S.ingredients, s.ingredient_id); if (ing && ing.category !== s.category) { ing.category = s.category; queue('save_ingredients', { items:[Object.assign({}, ing)] }); } }
+    const stSel = w.querySelector('#se-st');
+    if (stSel) {
+      const cur = stapleFor(s);
+      if (stSel.value === 'no') { if (cur && cur.active !== false) { S.staples = S.staples.filter(x => x !== cur); queue('delete_rows', { sheet:'Staples', ids:[cur.id] }); s.staple_id = ''; } }
+      else if (!cur || +cur.every_days !== +stSel.value || cur.active === false) { const st = newStaple(s.name, +stSel.value, s.qty); s.staple_id = st.id; toast(s.name + ': ' + freqLabel(st.every_days).toLowerCase()); }
+    }
     queue('shop_ops', { ops:[{ op:'put', item:Object.assign({}, s) }] }); w.close(); render();
   };
   w.querySelector('#se-del').onclick = () => { S.shopping = S.shopping.filter(x => x.id !== s.id); queue('shop_ops', { ops:[{ op:'del', id:s.id }] }); w.close(); render(); };

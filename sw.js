@@ -1,5 +1,5 @@
 // Network first, so a new version shows up on the next open; the saved copy is only used offline.
-const CACHE = 'cookbook-11.08-v6';
+const CACHE = 'cookbook-11.08-v8';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
