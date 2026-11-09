@@ -9,6 +9,7 @@
  *   Ingredients  your ingredient database (notes, substitutions, aisle)
  *   Cook Log     notes, adjustments and edit history per recipe
  *   Shopping     the shopping list
+ *   Categories   recipe categories, in groups (Meal, Cuisine, Diet…)
  *
  * Settings live in Script Properties (use the "Recipe Box" menu in the Sheet):
  *   APP_PIN            4-digit PIN the app asks for. If it isn't set, the first PIN typed
@@ -17,18 +18,23 @@
  *   CLAUDE_MODEL       optional — defaults to claude-sonnet-5-5
  */
 
-const BACKEND_VERSION = '11.08 v2';
+const BACKEND_VERSION = '11.08 v3';
+// What this backend can do; the app checks this list before using newer features.
+const FEATURES = ['categories', 'auto-columns'];
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 const SHEETS = {
   Recipes: ['id', 'title', 'description', 'source_type', 'source_url', 'photo', 'servings',
-    'prep_time', 'cook_time', 'total_time', 'tags', 'favorite', 'rating',
+    'prep_time', 'cook_time', 'total_time', 'categories', 'tags', 'favorite', 'rating',
     'ingredients', 'steps', 'notes', 'times_cooked', 'last_cooked',
     'created', 'updated', 'ingredients_data', 'steps_data', 'original'],
   Ingredients: ['id', 'name', 'aliases', 'category', 'notes', 'substitutions', 'created', 'updated'],
   'Cook Log': ['id', 'recipe_id', 'recipe_title', 'date', 'type', 'text', 'changes', 'rating', 'created'],
-  Shopping: ['id', 'name', 'qty', 'category', 'ingredient_id', 'recipes', 'checked', 'added', 'sort']
+  Shopping: ['id', 'name', 'qty', 'category', 'ingredient_id', 'recipes', 'checked', 'added', 'sort'],
+  Categories: ['id', 'name', 'group', 'sort', 'created']
 };
+// Tabs the app may write rows to directly (put_rows / delete_rows).
+const OPEN_SHEETS = { Categories: 1 };
 
 // Columns that hold JSON (kept at the far right of the sheet so the readable columns come first).
 const JSON_COLS = { ingredients_data: 1, steps_data: 1, original: 1, recipes: 1, changes: 1 };
@@ -150,7 +156,7 @@ function doPost(e) {
 
   try {
     switch (data.action) {
-      case 'ping':              return out({ ok: true, version: BACKEND_VERSION, ai: !!aiKey(), pinCreated: pinCreated });
+      case 'ping':              return out({ ok: true, version: BACKEND_VERSION, features: FEATURES, ai: !!aiKey(), pinCreated: pinCreated });
       case 'load':              return out(loadAll());
       case 'save_recipe':       return out(withLock(function () { return saveRecipe(data); }));
       case 'delete_recipe':     return out(withLock(function () { return deleteRecipe(data.id); }));
@@ -158,6 +164,8 @@ function doPost(e) {
       case 'delete_ingredient': return out(withLock(function () { return deleteRows('Ingredients', [data.id]); }));
       case 'save_log':          return out(withLock(function () { upsert('Cook Log', [data.entry]); return bumpCooked(data.entry, data.recipe); }));
       case 'delete_log':        return out(withLock(function () { return deleteRows('Cook Log', [data.id]); }));
+      case 'put_rows':          return out(withLock(function () { openSheet(data.sheet); return upsert(data.sheet, data.items || []); }));
+      case 'delete_rows':       return out(withLock(function () { openSheet(data.sheet); return deleteRows(data.sheet, data.ids || []); }));
       case 'shop_ops':          return out(withLock(function () { return shopOps(data.ops || []); }));
       case 'import_url':        return out(importUrl(String(data.url || '').trim()));
       case 'ai_parse':          return out(aiParse(data));
@@ -167,6 +175,10 @@ function doPost(e) {
   } catch (err) {
     return out({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+function openSheet(name) {
+  if (!OPEN_SHEETS[name]) throw new Error('Can\'t write to ' + name);
 }
 
 function out(obj) {
@@ -227,7 +239,19 @@ function upsert(name, objs) {
   objs = (objs || []).filter(function (o) { return o && o.id; });
   if (!objs.length) return { ok: true, n: 0 };
   const sh = sheet(name);
-  const headers = headersOf(sh);
+  let headers = headersOf(sh);
+  // New fields from the app become new columns on the right, so adding a field never needs a backend update.
+  const extra = [];
+  objs.forEach(function (o) {
+    Object.keys(o).forEach(function (k) {
+      if (/^[a-z][a-z0-9_]{0,40}$/.test(k) && headers.indexOf(k) === -1 && extra.indexOf(k) === -1) extra.push(k);
+    });
+  });
+  if (extra.length) {
+    sh.getRange(1, headers.length + 1, 1, extra.length).setValues([extra])
+      .setFontWeight('bold').setBackground('#111111').setFontColor('#ffffff');
+    headers = headers.concat(extra);
+  }
   const last = sh.getLastRow();
   const ids = last > 1 ? sh.getRange(2, 1, last - 1, 1).getValues().map(function (r) { return String(r[0]); }) : [];
   const appends = [];
@@ -269,7 +293,9 @@ function loadAll() {
   return {
     ok: true,
     version: BACKEND_VERSION,
+    features: FEATURES,
     ai: !!aiKey(),
+    categories: readAll('Categories'),
     recipes: readAll('Recipes'),
     ingredients: readAll('Ingredients'),
     log: readAll('Cook Log'),

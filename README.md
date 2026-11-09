@@ -54,6 +54,7 @@ Paste the new `Code.gs`, then **Deploy → Manage deployments → ✏️ Edit �
 | Ingredients | Your ingredient database: aisle, also-called names, notes, substitutions. Built automatically from recipes. |
 | Cook Log | "Made it", adjustments, notes, and an automatic record of every edit to a recipe. |
 | Shopping | The shopping list. |
+| Categories | Recipe categories and their groups. Recipes list theirs in the `categories` column. |
 
 ## Files
 - `index.html`: the whole app
