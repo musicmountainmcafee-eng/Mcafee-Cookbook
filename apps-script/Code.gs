@@ -11,12 +11,13 @@
  *   Shopping     the shopping list
  *
  * Settings live in Script Properties (use the "Recipe Box" menu in the Sheet):
- *   APP_PIN            4-digit PIN the app asks for
+ *   APP_PIN            4-digit PIN the app asks for. If it isn't set, the first PIN typed
+ *                      into the app becomes the PIN.
  *   ANTHROPIC_API_KEY  optional — turns on photo, social-video and smart text imports
  *   CLAUDE_MODEL       optional — defaults to claude-sonnet-5-5
  */
 
-const BACKEND_VERSION = '11.08 v1';
+const BACKEND_VERSION = '11.08 v2';
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 const SHEETS = {
@@ -46,8 +47,21 @@ function onOpen() {
     .addToUi();
 }
 
+/** The data Sheet: the one this script is attached to, or one it makes for itself. */
+function book() {
+  let ss = null;
+  try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
+  if (ss) return ss;
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('SHEET_ID');
+  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) {} }
+  ss = SpreadsheetApp.create('McAfee Cookbook Data');
+  props.setProperty('SHEET_ID', ss.getId());
+  return ss;
+}
+
 function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = book();
   Object.keys(SHEETS).forEach(function (name) {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
@@ -65,7 +79,8 @@ function setup() {
   });
   const first = ss.getSheetByName('Sheet1');
   if (first && first.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(first);
-  try { SpreadsheetApp.getUi().alert('Recipe Box tabs are ready. Next: Recipe Box → Set app PIN.'); } catch (e) {}
+  Logger.log('Cookbook data Sheet: ' + ss.getUrl());
+  try { SpreadsheetApp.getUi().alert('Recipe Box tabs are ready.'); } catch (e) {}
 }
 
 function menuSetPin() {
@@ -113,13 +128,29 @@ function doPost(e) {
   catch (err) { return out({ ok: false, error: 'Bad request' }); }
 
   const props = PropertiesService.getScriptProperties();
-  const pin = props.getProperty('APP_PIN');
-  if (!pin) return out({ ok: false, error: 'No PIN set yet. In the Sheet, use Recipe Box → Set app PIN.', code: 'nopin' });
-  if (String(data.pin || '') !== pin) return out({ ok: false, error: 'Wrong PIN', code: 'pin' });
+  let pin = props.getProperty('APP_PIN');
+  let pinCreated = false;
+  if (!pin) {
+    // First run: the first 4-digit PIN entered in the app becomes the PIN.
+    if (data.action === 'ping' && /^\d{4}$/.test(String(data.pin || ''))) {
+      pin = String(data.pin); props.setProperty('APP_PIN', pin); pinCreated = true;
+      try { setup(); } catch (e) {}
+    } else {
+      return out({ ok: false, error: 'Pick a 4-digit PIN to finish setting up.', code: 'pin' });
+    }
+  }
+  const cache = CacheService.getScriptCache();
+  const fails = +(cache.get('pin_fails') || 0);
+  if (fails >= 10) return out({ ok: false, error: 'Too many wrong PINs. Try again in 15 minutes.', code: 'locked' });
+  if (String(data.pin || '') !== pin) {
+    cache.put('pin_fails', String(fails + 1), 900);
+    return out({ ok: false, error: 'Wrong PIN', code: 'pin' });
+  }
+  if (fails) cache.remove('pin_fails');
 
   try {
     switch (data.action) {
-      case 'ping':              return out({ ok: true, version: BACKEND_VERSION, ai: !!aiKey() });
+      case 'ping':              return out({ ok: true, version: BACKEND_VERSION, ai: !!aiKey(), pinCreated: pinCreated });
       case 'load':              return out(loadAll());
       case 'save_recipe':       return out(withLock(function () { return saveRecipe(data); }));
       case 'delete_recipe':     return out(withLock(function () { return deleteRecipe(data.id); }));
@@ -153,7 +184,7 @@ function withLock(fn) {
 // ════════════════════════════════════════════════════════════
 
 function sheet(name) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = book();
   let sh = ss.getSheetByName(name);
   if (!sh) { setup(); sh = ss.getSheetByName(name); }
   return sh;

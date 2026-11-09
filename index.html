@@ -442,11 +442,11 @@ html[data-theme="dark"] .toast button { color:#534AB7; }
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
-<div id="build-tag">11.08 v2</div>
+<div id="build-tag">11.08 v3</div>
 
 <script>
 'use strict';
-const BUILD = '11.08 v2';
+const BUILD = '11.08 v3';
 // The Cookbook's own Google Sheet backend (Apps Script web app). Still needs the PIN.
 const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyPA3QlnFp-LLYdShsBqth8bgSCdFpGLb9W0B8vd5dp5-JUnN8Ys0VWFEn2nnwZhv7R/exec';
 
@@ -1883,7 +1883,7 @@ function showGate(err) {
     return;
   }
   pinBuf = '';
-  c.innerHTML = `<div class="gate-logo">${icon('book')}</div><h1>McAfee Cookbook</h1><p>Enter your PIN</p>
+  c.innerHTML = `<div class="gate-logo">${icon('book')}</div><h1>McAfee Cookbook</h1><p>Enter your PIN${ls('rb_ever') ? '' : '<br><span style="font-size:12.5px;color:#9a9aa1">Setting up for the first time? The 4 digits you pick now become your PIN.</span>'}</p>
     <div class="pin-dots">${[0,1,2,3].map(i => `<div class="pin-dot" id="pd${i}"></div>`).join('')}</div>
     <div class="pin-pad">${['1','2','3','4','5','6','7','8','9'].map(n => `<button class="pin-btn" data-p="${n}">${n}</button>`).join('')}<button class="pin-btn alt" data-p="clear">Clear</button><button class="pin-btn" data-p="0">0</button><button class="pin-btn alt" data-p="back" aria-label="Delete">⌫</button></div>
     <div class="pin-err" id="g-err">${esc(err || '')}</div>
@@ -1901,7 +1901,8 @@ async function pinPress(k) {
   try {
     CFG.pin = tryPin;
     const r = await api('ping');
-    S.ai = !!r.ai; saveCfg(); start();
+    S.ai = !!r.ai; saveCfg(); ls('rb_ever', 1); start();
+    if (r.pinCreated) toast('PIN ' + tryPin + ' saved — use it next time', { ms: 6000 });
   } catch (e) {
     CFG.pin = '';
     pinBuf = ''; [0,1,2,3].forEach(i => $('#pd' + i).classList.remove('on'));

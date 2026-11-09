@@ -20,9 +20,7 @@ After a minute the app is live at the link above.
 3. Delete what's in `Code.gs` and paste in everything from [`apps-script/Code.gs`](apps-script/Code.gs).
 4. Click the gear (**Project Settings**) → tick **Show "appsscript.json" manifest file**. Back in the editor, open `appsscript.json` and replace it with [`apps-script/appsscript.json`](apps-script/appsscript.json).
 5. Save. Pick the function **`setup`** in the toolbar and click **Run**. Approve the permissions it asks for. (Google may warn that the app isn't verified: *Advanced → Go to project*.)
-6. Back in the Sheet, reload it. A **Recipe Box** menu shows up:
-   - **Set app PIN**: pick a 4-digit PIN.
-   - **Set Claude API key** (optional, see below).
+6. Back in the Sheet, reload it. A **Recipe Box** menu shows up, with **Set Claude API key** (optional, see below) and **Set app PIN** (only needed to change it later).
 
 ### 3. Publish the backend
 In Apps Script: **Deploy → New deployment** → type **Web app**
@@ -31,8 +29,8 @@ In Apps Script: **Deploy → New deployment** → type **Web app**
 
 Deploy, then copy the **Web app URL** (ends in `/exec`).
 
-### 4. Connect the app
-Open the app, paste the `/exec` link, then enter your PIN. Done.
+### 4. Open the app
+The backend link is built into `index.html` (`DEFAULT_URL`). The first time, type any 4 digits; they become your PIN. Wrong PINs lock the app for 15 minutes after 10 tries.
 On your phone: open the link in Safari/Chrome → Share → **Add to Home Screen**.
 
 ---
