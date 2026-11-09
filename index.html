@@ -442,11 +442,13 @@ html[data-theme="dark"] .toast button { color:#534AB7; }
 </div>
 
 <div class="toast-wrap" id="toasts"></div>
-<div id="build-tag">11.08 v1</div>
+<div id="build-tag">11.08 v2</div>
 
 <script>
 'use strict';
-const BUILD = '11.08 v1';
+const BUILD = '11.08 v2';
+// The Cookbook's own Google Sheet backend (Apps Script web app). Still needs the PIN.
+const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyPA3QlnFp-LLYdShsBqth8bgSCdFpGLb9W0B8vd5dp5-JUnN8Ys0VWFEn2nnwZhv7R/exec';
 
 /* ═══════════════════════ Icons ═══════════════════════ */
 const ICONS = {
@@ -675,7 +677,8 @@ function guessAisle(name) {
 /* ═══════════════════════ State + cache ═══════════════════════ */
 const S = { recipes:[], ingredients:[], log:[], shopping:[], ai:false, loaded:false };
 const UI = { search:'', filter:'all', sort:'new', ingSearch:'', ingCat:'', checks:{}, scale:{} };
-let CFG = ls('rb_cfg') || { url:'', pin:'', demo:false };
+let CFG = ls('rb_cfg') || { url:DEFAULT_URL, pin:'', demo:false };
+if (!CFG.url && !CFG.demo) CFG.url = DEFAULT_URL;
 function saveCfg() { ls('rb_cfg', CFG); }
 function saveCache() { ls('rb_cache', { recipes:S.recipes, ingredients:S.ingredients, log:S.log, shopping:S.shopping, ai:S.ai, t:Date.now() }); }
 function loadCache() { const c = ls('rb_cache'); if (c) { applyData(c); return true; } return false; }
@@ -1849,7 +1852,7 @@ function exportJson() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cookbook-backup-' + today() + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 async function changeBackend() { if (OUTBOX.length && !await confirmSheet('Changes still waiting', OUTBOX.length + ' change(s) haven\'t reached the Sheet yet and will be lost.', 'Change anyway', true)) return; OUTBOX = []; ls('rb_outbox', OUTBOX); CFG = { url:'', pin:'', demo:false }; saveCfg(); lsDel('rb_cache'); location.hash = ''; showGate(); }
-function leaveDemo() { CFG = { url:'', pin:'', demo:false }; saveCfg(); lsDel('rb_cache'); location.hash = ''; showGate(); }
+function leaveDemo() { CFG = { url:DEFAULT_URL, pin:'', demo:false }; saveCfg(); lsDel('rb_cache'); location.hash = ''; showGate(); }
 async function resetDemo() { if (!await confirmSheet('Reset demo data?', 'Puts the sample recipes back and removes anything you added in demo mode.', 'Reset', true)) return; lsDel('rb_demo_db'); syncNow(); }
 
 /* ═══════════════════════ Gate: connect + PIN ═══════════════════════ */
@@ -1884,9 +1887,9 @@ function showGate(err) {
     <div class="pin-dots">${[0,1,2,3].map(i => `<div class="pin-dot" id="pd${i}"></div>`).join('')}</div>
     <div class="pin-pad">${['1','2','3','4','5','6','7','8','9'].map(n => `<button class="pin-btn" data-p="${n}">${n}</button>`).join('')}<button class="pin-btn alt" data-p="clear">Clear</button><button class="pin-btn" data-p="0">0</button><button class="pin-btn alt" data-p="back" aria-label="Delete">⌫</button></div>
     <div class="pin-err" id="g-err">${esc(err || '')}</div>
-    <button class="link-btn" id="g-change">Use a different Sheet</button>`;
+    <button class="link-btn" id="g-demo2">Try it with sample recipes</button>`;
   c.querySelectorAll('[data-p]').forEach(b => b.onclick = () => pinPress(b.dataset.p));
-  $('#g-change').onclick = () => { CFG.url = ''; saveCfg(); showGate(); };
+  $('#g-demo2').onclick = () => { CFG = { url:'', pin:'', demo:true }; saveCfg(); start(); };
 }
 document.addEventListener('keydown', e => { if ($('#gate').classList.contains('hide') || !$('.pin-pad')) return; if (/^\d$/.test(e.key)) pinPress(e.key); else if (e.key === 'Backspace') pinPress('back'); });
 async function pinPress(k) {
